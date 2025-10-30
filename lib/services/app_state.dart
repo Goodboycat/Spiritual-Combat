@@ -4,10 +4,12 @@ import '../models/quote_model.dart';
 import 'storage_service.dart';
 import 'quote_service.dart';
 import 'notification_service.dart';
+import 'quote_parser_database.dart';
 
 class AppState extends ChangeNotifier {
   final StorageService _storageService = StorageService();
   final QuoteService _quoteService = QuoteService();
+  final QuoteParserDatabase _quoteDatabase = QuoteParserDatabase();
   late final NotificationService _notificationService;
 
   AppSettings _settings = AppSettings();
@@ -30,13 +32,25 @@ class AppState extends ChangeNotifier {
     _isLoading = true;
     notifyListeners();
 
+    // Initialize quote parser database
+    await _quoteDatabase.initialize();
+
     _isFirstLaunch = await _storageService.isFirstLaunch();
     _settings = await _storageService.loadSettings();
     
     await _quoteService.loadQuotes(_settings.language);
+    
+    // Load quotes into database if not already present
+    if (!_quoteDatabase.hasQuotes()) {
+      final quotes = _quoteService.getAllQuotes();
+      await _quoteDatabase.saveQuotes(quotes);
+      await _quoteDatabase.updateLastUpdated();
+    }
+    
     await _notificationService.initialize();
     
-    _dailyQuote = _quoteService.getDailyQuote();
+    // Get daily quote from database
+    _dailyQuote = await _quoteDatabase.getDailyQuote() ?? _quoteService.getDailyQuote();
     
     if (_settings.notificationsEnabled) {
       await _scheduleNotifications();
